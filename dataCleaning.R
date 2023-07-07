@@ -39,6 +39,13 @@ indata <- indata %>%
 indata$timeInStudy_hr <- as.numeric(gsub(" hours", "", indata$timeInStudy_hr))
 indata$timeInStudy_hr <- round(indata$timeInStudy_hr, 2)
 
+
+# create time-dependent variable in the dataset based on survey response hours
+indata$TD_time[indata$hour <= 9] <- "Morning"
+indata$TD_time[indata$hour > 9 & indata$hour <= 15] <- "Afternoon"
+indata$TD_time[indata$hour >= 15] <- "Evening/Night"
+
+
 # Calculate the Z-score within each ID group to identify outliers >= 3 or <= -3
 indata <- indata %>%
   group_by(ID) %>%
@@ -173,4 +180,71 @@ write.csv(indata, file = "indata.csv")
 # Arrange plots side by side
 grid.arrange(violin1, violin2, violin3, violin4, ncol = 2)
 grid.arrange(violin5, violin6, violin7, violin8, ncol = 2)
+
+indata <- read.csv("indata.csv", header = T)
+
+# rename columns
+colnames(indata)[colnames(indata) %in% 'ID'] <- 'id'
+colnames(indata)[colnames(indata) %in% 'timeInStudy_hr'] <- 'time'
+colnames(indata)[colnames(indata) %in% 'res3_Suicid'] <- 'Suicidality'
+colnames(indata)[colnames(indata) %in% 'res1_Dep'] <- 'Depression'
+colnames(indata)[colnames(indata) %in% 'res2_Irrit'] <- 'Irritability'
+colnames(indata)[colnames(indata) %in% 'res4_Connectd'] <- 'Connectedness'
+
+# create correlation-matrix plot
+my_data <- indata[, c(6:9)]
+chart.Correlation(my_data, histogram=TRUE, pch=19)
+
+
+#calculate repeated measures correlations
+rmcorr(id,Suicidality,Depression,indata)#0.512
+rmcorr(id,Suicidality,Irritability,indata)#0.328
+rmcorr(id,Suicidality,Connectedness,indata)#-0.192
+
+rmcorr(id,Depression,Irritability,indata)#0.317
+rmcorr(id,Depression,Connectedness,indata)#-0.253
+
+rmcorr(id,Irritability,Connectedness,indata)#-0.076
+
+
+# create rm plot
+dist_rmc_mat <- rmcorr_mat(participant = id,
+                           variables = c("Suicidality",
+                                         "Depression",
+                                         "Irritability",
+                                         "Connectedness"),
+                           dataset = indata,
+                           CI.level = 0.95)
+
+
+# Set the layout for the plot grid
+par(mfrow = c(2, 3))
+
+# Plot arrangement
+plot.rmcorr1 <- plot(dist_rmc_mat$models[[1]])
+plot.rmcorr2 <- plot(dist_rmc_mat$models[[2]])
+plot.rmcorr3 <- plot(dist_rmc_mat$models[[3]])
+plot.rmcorr4 <- plot(dist_rmc_mat$models[[4]])
+plot.rmcorr5 <- plot(dist_rmc_mat$models[[5]])
+plot.rmcorr6 <- plot(dist_rmc_mat$models[[6]])
+
+# Reset the plot layout to default
+par(mfrow = c(1, 1))
+
+# Create a data frame with repeated measures data
+mydata <- subset(indata, select = c(id, time, Suicidality, Depression, Irritability, Connectedness))
+
+# Perform PCA
+pca <- prcomp(mydata[, -c(1:2)], scale. = TRUE)
+
+# Print the results
+print(pca)
+
+# Scree plot
+fviz_eig(pca)
+
+# Biplot
+fviz_pca_biplot(pca,
+                label="var",
+                habillage = indata$id)
 
