@@ -1,1 +1,1 @@
-# ctsem_suicide
+# Continuous-Time Structural Equation Modeling
