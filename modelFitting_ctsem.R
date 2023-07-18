@@ -1,106 +1,78 @@
-df <-  indata %>% select (ID, timeInStudy_hr, res3_Suicid, res1_Dep, res2_Irrit, res4_Connectd)
+##### Combined model (All four measurements) #####
 
-# Combined model (All variables) --------------------------------------
-
-model_combined<-ctModel(type='stanct',
-                        latentNames=c('Suicidality','Depression','Irritability', 'Connectedness'),
-                        manifestNames=c('Suicidality','Depression','Irritability', 'Connectedness'),
-                        LAMBDA=diag(4))
+# create the model object
+model_4measurements<-ctModel(type='stanct',
+                       latentNames=c('Suicidality','Depression','Irritability', 'Connectedness'),
+                       manifestNames=c('Suicidality','Depression','Irritability', 'Connectedness'),
+                       LAMBDA=diag(4))
 
 
 #set a narrow prior for the random scale
 if(TRUE){ #or F
-  model_combined$pars$indvarying <- TRUE
-  model_combined$pars$sdscale[!model_combined$pars$matrix %in% c('T0MEANS','MANIFESTMEANS','CINT')] <- .05
+  model_4measurements$pars$indvarying <- TRUE
+  model_4measurements$pars$sdscale[!model_4measurements$pars$matrix %in% c('T0MEANS','MANIFESTMEANS','CINT')] <- .05
 }
 
 #show model parameters
-print(model_combined$pars)
+# print(model_4measurements$pars)
+# generate model equation
+# ctModelLatex(model_4measurements)
 
-ctModelLatex(model_combined)
+# create dataframe for the ctStanFit() object
+df_4manifest <-  indata %>% select (id, time, Suicidality, Depression, Irritability, Connectedness)
 
-fit_combined<-ctStanFit(datalong = df, ctstanmodel = model_combined, 
-                        plot=10,verbose=0,cores=2,nopriors=F)
+fit_4manifest <- ctStanFit(datalong = df_4manifest, ctstanmodel = model_4measurements, 
+                         plot=10,verbose=0,cores=2,nopriors=F)
 
+# Save the model object
+save(fit_4manifest, file = "fit_4manifest.RData")
 
+# load("fit_4manifest.RData")
 
-ctModelLatex(fit_combined)
+ctModelLatex(fit_4manifest)
+summary.fit_4manifest <- summary(fit_4manifest)
+summary.fit_4manifest$popmeans
 
-#print the summary
-ctsem:::ctSummarise(fit_combined, folder = 'frequency',cores=2,
-                    lags = c(24, 72, 168),ctStanPlotPost = F,
-                    nsamples = 10)
+# find correlation
+corr_df <- as.data.frame(summary.fit_4manifest$rawpopcorr)
+corr_df <- tibble::rownames_to_column(corr_df, "Parameter")
+corr_df <- corr_df[grepl("^mm", corr_df$Parameter), ]
+corr_df <- corr_df[!grepl("T0m", corr_df$Parameter), ]
+rownames(corr_df) <- NULL
 
-# Generating data from posterior mean
-# Using 2/8 logical CPU cores
-# starting worker pid=48035 on localhost:11719 at 22:50:26.497
-# starting worker pid=48048 on localhost:11719 at 22:50:26.740
-# Loading required package: data.table
-# Loading required package: data.table
-# Error in eval(parse(text = x), envir = globalenv()) : 
-#   Exception: mdivide_left_spd: Matrix A is not positive definite  (in 'model_ctsmgen' at line 1100)
-# 
-# Error in eval(parse(text = x), envir = globalenv()) : 
-#   Exception: mdivide_left_spd: Matrix A is not positive definite  (in 'model_ctsmgen' at line 1100)
+# Convert df to LaTeX code
+latex_code <- xtable(corr_df)
 
+# Print LaTeX code
+print(latex_code, type = "latex", include.rownames=FALSE)
 
+ctStanContinuousPars(fit_4manifest, plot = T)
+ctStanDiscretePars(fit_4manifest,plot=T)
 
-plot(fit_combined)
-ctStanContinuousPars(fit_combined)
-ctStanDiscretePars(fit_combined,plot=T)
+#PLOTTING THE MODEL OBSERVATIONS FOR SELECTED SUBJECTS
+ctKalman(fit_4manifest,subjects=17:19,plot=T,kalmanvec=c('y','ysmooth'))#plot parameters for the selected subjects
+ctKalman(fit_4manifest,subjects=4,plot=T,kalmanvec=c('y','ysmooth'))#plot parameters for subject#4
 
-#PLOTTING THE MODEL OBSERVATIONS FOR SINGLE SUBJECTS
-ctKalman(fit_combined,subjects=17:18,plot=T,kalmanvec=c('y','ysmooth'))#plot parameters for the first 4 subjects
-ctKalman(fit_combined,subjects=4,plot=T,kalmanvec=c('y','ysmooth'))#plot parameters for subject n4
+# check the chi-square test
+ctChisqTest(fit_td_predc)
 
-#EXTRACT INDIVIDUAL PARAMETERS#
-?ctStanSubjectPars
-indpars1 <- ctStanSubjectPars(fit_combined, cores = 2, nsamples = "all")[1,,]
-indpars1
-str(indpars1)
-dimnames(indpars1)
+# get the fit of the model and log-likelihood
+cf<-ctCheckFit(fit_4manifest, 
+               postpred = TRUE,
+               priorpred = TRUE,
+               statepred = TRUE,
+               residuals = TRUE)
 
-#convert to a data-frame
-ind.data1 <- data.frame(indpars1)
-summary(ind.data1)
+# plot for diagnostic checking
+plot(cf,wait=FALSE)
 
-#check IDs
-print(df$id)
-fit_combined$setup$idmap
-id<-data.frame(levels(df$id))
-colnames(id)
-ind.data1$ID<-as.factor(id$levels.data_combined.id.)
-str(ind.data1)
+#compare randomly generated data from posterior to observed data
+ctStanPostPredict(fit_4manifest, wait=FALSE) 
 
-#write a csv
-write.csv(ind.data1, file="SubjectParametersCombined.csv")
+#calculate discrete time parameters
+summary(fit_4manifest, timeinterval = 24)#1 day
+summary(fit_4manifest, timeinterval = 72)#3 days
+summary(fit_4manifest, timeinterval = 168)#1 week
+summary(fit_4manifest, timeinterval = 336)#2 weeks
 
-
-#GRAPHS####
-par(mfrow=c(2,2))
-names(fit_combined)
-
-#Distribution of continuous individual auto-effects
-hist(ind.data1$drift_Suicidality,breaks=5,
-     xlim=range (-1, 1), ylim=range(0, 30),freq=T,
-     xlab= "Suicidality ", main=NA,ylab="n of participants")
-
-hist(ind.data1$drift_Depression,breaks=5,
-     xlim=range (-1, 1), ylim=range(0, 30),freq=T,
-     xlab= "Depression ", main=NA,ylab="n of participants")
-
-hist(ind.data1$drift_Irritability,breaks=5,
-     xlim=range (-1, 1), ylim=range(0, 30),freq=T,
-     xlab= "Irritability ", main=NA,ylab="n of participants")
-
-hist(ind.data1$drift_Connectedness,breaks=5,
-     xlim=range (-1, 1), ylim=range(0, 30),freq=T,
-     xlab= "Connectedness ", main=NA,ylab="n of participants")
-
-
-#Distribution of continuous individual cross-lagged effects
-hist(ind.data1$drift_Depression_Suicidality,breaks=5,
-     xlim=range (-1, 1), ylim=range(0, 30),freq=T,
-     xlab= "Suicidality --> Depression", main=NA,ylab="n of participants")
-
-
+ctsem:::ctSummarise(fit_4manifest, folder = 'MODEL_4MANIFEST',cores=2,ctStanPlotPost = F,nsamples = 1000)
