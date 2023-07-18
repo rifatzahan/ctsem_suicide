@@ -1,7 +1,7 @@
-setwd("/Users/rifat/Library/CloudStorage/OneDrive-UniversityofSaskatchewan/PhD CS USASK/Research/Suicide ABM CSTEM/suicidal ideation ethica/")
+setwd("................")
 
 library(remotes)
-# remotes::install_github('cdriveraus/ctsem', INSTALL_opts = "--no-multiarch", dependencies = c("Depends", "Imports"))
+#remotes::install_github('cdriveraus/ctsem', INSTALL_opts = "--no-multiarch", dependencies = c("Depends", "Imports"))
 library(Rcpp)
 library(ctsem)
 library(plyr)
@@ -14,7 +14,25 @@ library(tidyverse)
 library(splitstackshape)
 library(ggplot2)
 library(gridExtra)
+library(PerformanceAnalytics)
+library(lattice)
+library(stats)
+library(factoextra)
+library(GGally)
+library(Rtsne)
+library(tsne)
+library(misc3d)
+library(plot3D)
+library(rgl)
+library(webshot2)
+library(plot3Drgl)
+library(vrmlgen)
+library(htmlwidgets)
+library(corrplot)
+library(xtable)
+library(tibble)
 
+# import the data
 df <- read.csv("ScalaASuicidalityData_19Feb2019.csv", header = TRUE) # 1315 obs
 
 # see the labels for survey status
@@ -22,7 +40,6 @@ unique(df$dur_1) # [1] "answered" "exp_canc"
 
 # delete expired surveys
 df <- subset(df, dur_1 == "answered") # 838 obs
-df <- na.omit(df)
 
 indata$ID <- as.factor (indata$ActUserID)
 indata$record_time <- str_remove(indata$record_time, "-06:00")
@@ -38,12 +55,6 @@ indata <- indata %>%
 
 indata$timeInStudy_hr <- as.numeric(gsub(" hours", "", indata$timeInStudy_hr))
 indata$timeInStudy_hr <- round(indata$timeInStudy_hr, 2)
-
-
-# create time-dependent variable in the dataset based on survey response hours
-indata$TD_time[indata$hour <= 9] <- "Morning"
-indata$TD_time[indata$hour > 9 & indata$hour <= 15] <- "Afternoon"
-indata$TD_time[indata$hour >= 15] <- "Evening/Night"
 
 
 # Calculate the Z-score within each ID group to identify outliers >= 3 or <= -3
@@ -62,6 +73,9 @@ ids_less_than_5 <- names(id_counts[id_counts < 5]) # "11" "13" "21" 26" "38" "42
 # remove ID's with less than or equals to 5 observations
 indata <- indata %>%
   filter(!ID %in% ids_less_than_5)
+
+
+##### Outlier removal inspecting the violin plot #######
 
 # after the creation of violing plot remove ID's without variability
 unwanted_ids <- c("39", "48", "49", "50")
@@ -181,8 +195,6 @@ write.csv(indata, file = "indata.csv")
 grid.arrange(violin1, violin2, violin3, violin4, ncol = 2)
 grid.arrange(violin5, violin6, violin7, violin8, ncol = 2)
 
-indata <- read.csv("indata.csv", header = T)
-
 # rename columns
 colnames(indata)[colnames(indata) %in% 'ID'] <- 'id'
 colnames(indata)[colnames(indata) %in% 'timeInStudy_hr'] <- 'time'
@@ -191,10 +203,19 @@ colnames(indata)[colnames(indata) %in% 'res1_Dep'] <- 'Depression'
 colnames(indata)[colnames(indata) %in% 'res2_Irrit'] <- 'Irritability'
 colnames(indata)[colnames(indata) %in% 'res4_Connectd'] <- 'Connectedness'
 
+# export the clean dataset
+indata <- read.csv("indata.csv", header = T)
+
 # create correlation-matrix plot
 my_data <- indata[, c(6:9)]
 chart.Correlation(my_data, histogram=TRUE, pch=19)
 
+
+#calculate ICC
+ICCbare(id, Depression, data = indata)#0.524
+ICCbare(id, Irritability, data = indata)#0.554
+ICCbare(id, Connectedness, data = indata)#.556
+ICCbare(id, Suicidality, data = indata)#.797
 
 #calculate repeated measures correlations
 rmcorr(id,Suicidality,Depression,indata)#0.512
@@ -230,21 +251,3 @@ plot.rmcorr6 <- plot(dist_rmc_mat$models[[6]])
 
 # Reset the plot layout to default
 par(mfrow = c(1, 1))
-
-# Create a data frame with repeated measures data
-mydata <- subset(indata, select = c(id, time, Suicidality, Depression, Irritability, Connectedness))
-
-# Perform PCA
-pca <- prcomp(mydata[, -c(1:2)], scale. = TRUE)
-
-# Print the results
-print(pca)
-
-# Scree plot
-fviz_eig(pca)
-
-# Biplot
-fviz_pca_biplot(pca,
-                label="var",
-                habillage = indata$id)
-
